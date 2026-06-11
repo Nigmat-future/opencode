@@ -13,6 +13,7 @@ import normalizeStoragePathsMigration from "@opencode-ai/core/database/migration
 import sessionMessageProjectionOrderMigration from "@opencode-ai/core/database/migration/20260603040000_session_message_projection_order"
 import eventSourcedSessionInputMigration from "@opencode-ai/core/database/migration/20260604172448_event_sourced_session_input"
 import contextEpochAgentMigration from "@opencode-ai/core/database/migration/20260605042240_add_context_epoch_agent"
+import projectDirectoryStrategyMigration from "@opencode-ai/core/database/migration/20260611170000_project_directory_strategy"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
 import { AbsolutePath } from "@opencode-ai/core/schema"
@@ -31,6 +32,47 @@ const run = <A, E>(effect: Effect.Effect<A, E, SqlClientService>) =>
 const makeDb = EffectDrizzleSqlite.makeWithDefaults()
 
 describe("DatabaseMigration", () => {
+  test("migrates project directory types to nullable strategies", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* db.run(
+          sql`CREATE TABLE project (id text PRIMARY KEY, worktree text NOT NULL, time_created integer NOT NULL)`,
+        )
+        yield* db.run(
+          sql`CREATE TABLE project_directory (project_id text NOT NULL, directory text NOT NULL, type text NOT NULL, time_created integer NOT NULL, PRIMARY KEY (project_id, directory), FOREIGN KEY (project_id) REFERENCES project(id) ON DELETE CASCADE)`,
+        )
+        yield* db.run(
+          sql`INSERT INTO project (id, worktree, time_created) VALUES ('project', '/repo/main', 1), ('legacy', '/legacy', 2), ('global', '/', 3)`,
+        )
+        yield* db.run(
+          sql`INSERT INTO project_directory (project_id, directory, type, time_created) VALUES ('project', '/repo/main', 'main', 10), ('project', '/repo/root', 'root', 11), ('project', '/repo/worktree', 'git_worktree', 12), ('project', '/repo/custom', 'acme/snapshot', 13)`,
+        )
+
+        yield* DatabaseMigration.applyOnly(db, [projectDirectoryStrategyMigration])
+
+        expect(
+          yield* db.all(
+            sql`SELECT project_id, directory, strategy, time_created FROM project_directory ORDER BY project_id, directory`,
+          ),
+        ).toEqual([
+          { project_id: "legacy", directory: "/legacy", strategy: null, time_created: 2 },
+          { project_id: "project", directory: "/repo/custom", strategy: "acme/snapshot", time_created: 13 },
+          { project_id: "project", directory: "/repo/main", strategy: null, time_created: 10 },
+          { project_id: "project", directory: "/repo/root", strategy: null, time_created: 11 },
+          { project_id: "project", directory: "/repo/worktree", strategy: "git_worktree", time_created: 12 },
+        ])
+        expect(
+          yield* db.all<{ name: string; notnull: number }>(sql`PRAGMA table_info(project_directory)`),
+        ).toContainEqual(expect.objectContaining({ name: "strategy", notnull: 0 }))
+
+        expect(yield* db.all(sql`PRAGMA foreign_key_list(project_directory)`)).toContainEqual(
+          expect.objectContaining({ table: "project", from: "project_id", to: "id", on_delete: "CASCADE" }),
+        )
+      }),
+    )
+  })
+
   test("serializes concurrent embedded initialization for one database path", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "embedded.sqlite")

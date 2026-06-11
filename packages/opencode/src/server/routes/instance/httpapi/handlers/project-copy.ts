@@ -13,6 +13,8 @@ import { LLMEvent } from "@opencode-ai/llm"
 import { MessageID, SessionID } from "@/session/schema"
 import { Provider } from "@/provider/provider"
 import { Slug } from "@opencode-ai/core/util/slug"
+import { LocationServiceMap } from "@opencode-ai/core/location-layer"
+import { Location } from "@opencode-ai/core/location"
 
 const FALLBACK_AGENT: Agent.Info = {
   name: "title",
@@ -43,7 +45,15 @@ export const projectCopyHandlers = HttpApiBuilder.group(InstanceHttpApi, "projec
     const llm = yield* LLM.Service
     const agent = yield* Agent.Service
     const provider = yield* Provider.Service
-    const service = yield* ProjectCopy.Service
+    const locations = yield* LocationServiceMap
+
+    const projectCopy = Effect.fnUntraced(function* <A, E, R>(effect: Effect.Effect<A, E, R>) {
+      return yield* effect.pipe(
+        Effect.provide(
+          locations.get(Location.Ref.make({ directory: AbsolutePath.make((yield* InstanceState.context).directory) })),
+        ),
+      )
+    })
 
     const generateName = Effect.fn("ProjectCopyHttpApi.generateName")(function* (context: string | undefined) {
       const text = context?.trim()
@@ -101,13 +111,18 @@ export const projectCopyHandlers = HttpApiBuilder.group(InstanceHttpApi, "projec
       const name =
         ctx.payload.name ??
         (yield* generateName(ctx.payload.context).pipe(Effect.catch(() => Effect.succeed(Slug.create()))))
+      const instance = yield* InstanceState.context
       return yield* badRequest(
-        service.create({
-          ...ctx.payload,
-          name,
-          projectID: ctx.params.projectID,
-          sourceDirectory: AbsolutePath.make((yield* InstanceState.context).worktree),
-        }),
+        projectCopy(
+          ProjectCopy.Service.use((service) =>
+            service.create({
+              ...ctx.payload,
+              name,
+              projectID: ctx.params.projectID,
+              sourceDirectory: AbsolutePath.make(instance.worktree),
+            }),
+          ),
+        ),
       )
     })
 
@@ -116,18 +131,20 @@ export const projectCopyHandlers = HttpApiBuilder.group(InstanceHttpApi, "projec
       payload: typeof RemovePayload.Type
     }) {
       yield* badRequest(
-        service.remove({
-          ...ctx.payload,
-          projectID: ctx.params.projectID,
-        }),
+        projectCopy(
+          ProjectCopy.Service.use((service) =>
+            service.remove({
+              ...ctx.payload,
+              projectID: ctx.params.projectID,
+            }),
+          ),
+        ),
       )
     })
 
     const refresh = Effect.fn("ProjectCopyHttpApi.refresh")(function* (ctx: { params: { projectID: ProjectV2.ID } }) {
       yield* badRequest(
-        service.refresh({
-          projectID: ctx.params.projectID,
-        }),
+        projectCopy(ProjectCopy.Service.use((service) => service.refresh({ projectID: ctx.params.projectID }))),
       )
     })
 
@@ -153,5 +170,7 @@ function message(error: ProjectCopy.Error) {
     return `Project copy directory unavailable: ${error.directory}`
   if (error instanceof ProjectCopy.StrategyNotFoundError)
     return `Project copy strategy not found for: ${error.directory}`
+  if (error instanceof ProjectCopy.StrategyUnavailableError)
+    return `Project copy strategy unavailable: ${error.strategy}`
   return error.message
 }

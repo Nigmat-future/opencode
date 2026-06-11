@@ -59,6 +59,7 @@ export type Event =
   | EventPermissionV2Asked
   | EventPermissionV2Replied
   | EventReferenceUpdated
+  | EventProjectDirectoriesUpdated
   | EventFileWatcherUpdated
   | EventPtyCreated
   | EventPtyUpdated
@@ -78,7 +79,6 @@ export type Event =
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
-  | EventProjectDirectoriesUpdated
   | EventProjectUpdated
   | EventVcsBranchUpdated
   | EventQuestionAsked
@@ -1313,6 +1313,13 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "project.directories.updated"
+        properties: {
+          projectID: string
+        }
+      }
+    | {
+        id: string
         type: "file.watcher.updated"
         properties: {
           file: string
@@ -1494,13 +1501,6 @@ export type GlobalEvent = {
           sessionID: string
           arguments: string
           messageID: string
-        }
-      }
-    | {
-        id: string
-        type: "project.directories.updated"
-        properties: {
-          projectID: string
         }
       }
     | {
@@ -3743,7 +3743,7 @@ export type ConfigV2ExperimentalPolicy = {
 
 export type ProjectDirectories = Array<{
   directory: string
-  type: "main" | "root" | "git_worktree"
+  strategy?: string
 }>
 
 export type ProjectCopyCopy = {
@@ -4990,6 +4990,14 @@ export type EventReferenceUpdated = {
   }
 }
 
+export type EventProjectDirectoriesUpdated = {
+  id: string
+  type: "project.directories.updated"
+  properties: {
+    projectID: string
+  }
+}
+
 export type EventFileWatcherUpdated = {
   id: string
   type: "file.watcher.updated"
@@ -5136,14 +5144,6 @@ export type EventCommandExecuted = {
     sessionID: string
     arguments: string
     messageID: string
-  }
-}
-
-export type EventProjectDirectoriesUpdated = {
-  id: string
-  type: "project.directories.updated"
-  properties: {
-    projectID: string
   }
 }
 
@@ -7082,7 +7082,7 @@ export type ExperimentalProjectCopyRemoveResponse =
 
 export type ExperimentalProjectCopyCreateData = {
   body?: {
-    strategy: "git_worktree"
+    strategy: string
     directory: string
     name?: string
     context?: string

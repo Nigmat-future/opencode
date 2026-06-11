@@ -9,11 +9,14 @@ import { CommandV2 } from "./command"
 import { AgentV2 } from "./agent"
 import { PluginBoot } from "./plugin/boot"
 import { Project } from "./project"
+import { ProjectCopy } from "./project/copy"
+import { ProjectDirectories } from "./project/directories"
 import { EventV2 } from "./event"
 import { Credential } from "./credential"
 import { Npm } from "./npm"
 import { ModelsDev } from "./models-dev"
 import { FSUtil } from "./fs-util"
+import { Git } from "./git"
 import { Global } from "./global"
 import { Database } from "./database/database"
 import { PermissionV2 } from "./permission"
@@ -63,6 +66,7 @@ export class LocationServiceMap extends LayerMap.Service<LocationServiceMap>()("
       CommandV2.locationLayer,
       AgentV2.locationLayer,
       PluginBoot.locationLayer,
+      ProjectCopy.locationLayer,
       FileSystem.locationLayer,
       Watcher.locationLayer,
       Pty.locationLayer,
@@ -120,10 +124,12 @@ export class LocationServiceMap extends LayerMap.Service<LocationServiceMap>()("
     Npm.defaultLayer,
     ModelsDev.defaultLayer,
     FSUtil.defaultLayer,
+    Git.defaultLayer,
     AppProcess.defaultLayer,
     Global.defaultLayer,
     Ripgrep.defaultLayer,
     Database.defaultLayer,
+    ProjectDirectories.defaultLayer,
     SessionStore.layer.pipe(Layer.provide(Database.defaultLayer)),
     PermissionSaved.defaultLayer,
     RepositoryCache.defaultLayer,

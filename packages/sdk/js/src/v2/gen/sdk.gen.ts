@@ -889,7 +889,7 @@ export class ProjectCopy extends HeyApiClient {
     parameters: {
       projectID: string
       workspace?: string
-      strategy?: "git_worktree"
+      strategy?: string
       directory?: string
       name?: string
       context?: string
